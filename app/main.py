@@ -5,6 +5,8 @@ Serves camera UI and /classify endpoint for RunPod-compatible API.
 import base64
 from pathlib import Path
 
+from typing import Optional
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,8 +37,8 @@ class ClassifyResponse(BaseModel):
 
 class ClassifyRequest(BaseModel):
     """For JSON body with base64 image (RunPod / API clients)."""
-    image_base64: str | None = None
-    image_url: str | None = None
+    image_base64: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -49,7 +51,7 @@ async def camera_page():
 
 
 @app.post("/classify", response_model=ClassifyResponse)
-async def classify_image(request: Request, file: UploadFile | None = File(None)):
+async def classify_image(request: Request, file: Optional[UploadFile] = File(None)):
     """
     Classify beard from image.
     Accepts: multipart file upload, or JSON body with image_base64 / image_url.

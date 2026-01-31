@@ -4,6 +4,7 @@ Uses OpenCV for face detection and a small CNN for beard/no-beard.
 Model can be replaced with your own trained weights (e.g. CelebA beard attribute).
 """
 import os
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -58,7 +59,7 @@ else:
 class BeardClassifier:
     """Detect face in image and classify beard presence."""
 
-    def __init__(self, model_path: str | None = None):
+    def __init__(self, model_path: Optional[str] = None):
         self._face_cascade = _get_face_cascade()
         self._device = torch.device("cuda" if TORCH_AVAILABLE and torch.cuda.is_available() else "cpu") if TORCH_AVAILABLE else None
         self._model = None
@@ -77,7 +78,7 @@ class BeardClassifier:
             self._model.to(self._device)
             self._model.eval()
 
-    def _detect_face(self, image: np.ndarray) -> np.ndarray | None:
+    def _detect_face(self, image: np.ndarray) -> Optional[np.ndarray]:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         faces = self._face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         if len(faces) == 0:

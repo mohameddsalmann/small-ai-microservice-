@@ -1,206 +1,262 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Beard Classifier - Camera</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      margin: 0;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-      color: #e8e8e8;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 1.5rem;
-    }
-    h1 {
-      font-size: 1.75rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-    }
-    .subtitle { color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; }
-    .camera-wrap {
-      position: relative;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
-      background: #0f172a;
-    }
-    #video {
-      display: block;
-      width: 100%;
-      max-width: 640px;
-      height: auto;
-    }
-    .overlay {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 1rem 1.25rem;
-      background: linear-gradient(transparent, rgba(0,0,0,0.85));
-      font-size: 1.25rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .overlay.beard { color: #34d399; }
-    .overlay.no-beard { color: #f87171; }
-    .overlay.waiting { color: #94a3b8; }
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: currentColor;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-    .controls {
-      margin-top: 1.25rem;
-      display: flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    button {
-      padding: 0.6rem 1.2rem;
-      border: none;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: transform 0.1s, box-shadow 0.2s;
-    }
-    button:active { transform: scale(0.98); }
-    .btn-start {
-      background: #3b82f6;
-      color: white;
-    }
-    .btn-start:hover { background: #2563eb; box-shadow: 0 4px 14px rgba(59,130,246,0.4); }
-    .btn-stop {
-      background: #64748b;
-      color: white;
-    }
-    .btn-stop:hover { background: #475569; }
-    .error { color: #f87171; margin-top: 1rem; max-width: 480px; text-align: center; }
-  </style>
-</head>
-<body>
-  <h1>Beard Classifier</h1>
-  <p class="subtitle">Allow camera access and start to see live classification</p>
 
-  <div class="camera-wrap">
-    <video id="video" autoplay playsinline muted></video>
-    <div id="overlay" class="overlay waiting">
-      <span class="dot"></span>
-      <span id="label">Allow camera &amp; start</span>
-    </div>
-  </div>
-
-  <div class="controls">
-    <button class="btn-start" id="startBtn">Start camera</button>
-    <button class="btn-stop" id="stopBtn" disabled>Stop</button>
-  </div>
-  <p id="error" class="error" aria-live="polite"></p>
-
-  <script>
-    const video = document.getElementById('video');
-    const overlay = document.getElementById('overlay');
-    const label = document.getElementById('label');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const errorEl = document.getElementById('error');
-
-    let stream = null;
-    let intervalId = null;
-    const CLASSIFY_INTERVAL_MS = 800;
-
-    function setOverlay(hasBeard, confidence, state) {
-      overlay.className = 'overlay ' + (state || (hasBeard ? 'beard' : 'no-beard'));
-      if (state === 'waiting') {
-        label.textContent = 'Allow camera & start';
-      } else if (typeof hasBeard === 'boolean') {
-        const pct = (confidence * 100).toFixed(0);
-        label.textContent = hasBeard ? `Beard: Yes (${pct}%)` : `Beard: No (${pct}%)`;
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beard Classifier - Camera</title>
+    <style>
+      * {
+        box-sizing: border-box;
       }
-    }
 
-    function showError(msg) {
-      errorEl.textContent = msg || '';
-    }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        color: #e8e8e8;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.5rem;
+      }
 
-    async function captureAndClassify() {
-      if (!stream || video.readyState < 2) return;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0);
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
-      const form = new FormData();
-      form.append('file', blob, 'frame.jpg');
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+      }
 
-      try {
-        const res = await fetch('/classify', { method: 'POST', body: form });
-        const data = await res.json();
-        if (res.ok) {
-          setOverlay(data.has_beard, data.confidence);
-          showError('');
-        } else {
-          setOverlay(null, null, 'waiting');
-          label.textContent = data.detail || 'Classification error';
+      .subtitle {
+        color: #94a3b8;
+        font-size: 0.95rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .camera-wrap {
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        background: #0f172a;
+      }
+
+      #video {
+        display: block;
+        width: 100%;
+        max-width: 640px;
+        height: auto;
+      }
+
+      .overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 1rem 1.25rem;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+        font-size: 1.25rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .overlay.beard {
+        color: #34d399;
+      }
+
+      .overlay.no-beard {
+        color: #f87171;
+      }
+
+      .overlay.waiting {
+        color: #94a3b8;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+
+        0%,
+        100% {
+          opacity: 1;
         }
-      } catch (e) {
-        setOverlay(null, null, 'waiting');
-        label.textContent = 'Network error';
-        showError(e.message);
-      }
-    }
 
-    async function startCamera() {
-      showError('');
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        video.srcObject = stream;
-        overlay.className = 'overlay waiting';
-        label.textContent = 'Starting…';
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        await video.play();
-        intervalId = setInterval(captureAndClassify, CLASSIFY_INTERVAL_MS);
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      .controls {
+        margin-top: 1.25rem;
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      button {
+        padding: 0.6rem 1.2rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.2s;
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      .btn-start {
+        background: #3b82f6;
+        color: white;
+      }
+
+      .btn-start:hover {
+        background: #2563eb;
+        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+      }
+
+      .btn-stop {
+        background: #64748b;
+        color: white;
+      }
+
+      .btn-stop:hover {
+        background: #475569;
+      }
+
+      .error {
+        color: #f87171;
+        margin-top: 1rem;
+        max-width: 480px;
+        text-align: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Beard Classifier</h1>
+    <p class="subtitle">Allow camera access and start to see live classification</p>
+
+    <div class="camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <div id="overlay" class="overlay waiting">
+        <span class="dot"></span>
+        <span id="label">Allow camera &amp; start</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-start" id="startBtn">Start camera</button>
+      <button class="btn-stop" id="stopBtn" disabled>Stop</button>
+    </div>
+    <p id="error" class="error" aria-live="polite"></p>
+
+    <script>
+      const video = document.getElementById('video');
+      const overlay = document.getElementById('overlay');
+      const label = document.getElementById('label');
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const errorEl = document.getElementById('error');
+
+      let stream = null;
+      let intervalId = null;
+      const CLASSIFY_INTERVAL_MS = 800;
+
+      function setOverlay(hasBeard, confidence, state) {
+        overlay.className = 'overlay ' + (state || (hasBeard ? 'beard' : 'no-beard'));
+        if (state === 'waiting') {
+          label.textContent = 'Allow camera & start';
+        } else if (typeof hasBeard === 'boolean') {
+          const pct = (confidence * 100).toFixed(0);
+          label.textContent = hasBeard ? `Beard: Yes (${pct}%)` : `Beard: No (${pct}%)`;
+        }
+      }
+
+      function showError(msg) {
+        errorEl.textContent = msg || '';
+      }
+
+      async function captureAndClassify() {
+        if (!stream || video.readyState < 2) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+        const form = new FormData();
+        form.append('file', blob, 'frame.jpg');
+
+        try {
+          const res = await fetch('/classify', { method: 'POST', body: form });
+          const data = await res.json();
+          if (res.ok) {
+            setOverlay(data.has_beard, data.confidence);
+            showError('');
+          } else {
+            setOverlay(null, null, 'waiting');
+            label.textContent = data.detail || 'Classification error';
+          }
+        } catch (e) {
+          setOverlay(null, null, 'waiting');
+          label.textContent = 'Network error';
+          showError(e.message);
+        }
+      }
+
+      async function startCamera() {
+        showError('');
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+          video.srcObject = stream;
+          overlay.className = 'overlay waiting';
+          label.textContent = 'Starting…';
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          await video.play();
+          intervalId = setInterval(captureAndClassify, CLASSIFY_INTERVAL_MS);
+          setOverlay(null, null, 'waiting');
+          label.textContent = 'Classifying…';
+        } catch (e) {
+          showError('Camera access denied or not available: ' + e.message);
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }
+
+      function stopCamera() {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          stream = null;
+        }
+        video.srcObject = null;
         setOverlay(null, null, 'waiting');
-        label.textContent = 'Classifying…';
-      } catch (e) {
-        showError('Camera access denied or not available: ' + e.message);
+        label.textContent = 'Allow camera & start';
         startBtn.disabled = false;
         stopBtn.disabled = true;
+        showError('');
       }
-    }
 
-    function stopCamera() {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      }
-      video.srcObject = null;
-      setOverlay(null, null, 'waiting');
-      label.textContent = 'Allow camera & start';
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      showError('');
-    }
+      startBtn.addEventListener('click', startCamera);
+      stopBtn.addEventListener('click', stopCamera);
+    </script>
+  </body>
 
-    startBtn.addEventListener('click', startCamera);
-    stopBtn.addEventListener('click', stopCamera);
-  </script>
-</body>
 </html>
